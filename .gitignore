@@ -1,0 +1,514 @@
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.chart import BarChart, PieChart, LineChart
+from openpyxl.chart.label import DataLabelList
+from openpyxl.formatting.rule import CellIsRule
+from io import BytesIO
+
+
+def set_header(ws, title, subtitle=""):
+    ws.merge_cells("A1:F1")
+    ws["A1"] = title
+    ws["A1"].font = Font(size=14, bold=True, color="FFFFFF")
+    ws["A1"].fill = PatternFill("solid", fgColor="1F3552")
+    ws["A1"].alignment = Alignment(horizontal="center")
+
+    if subtitle:
+        ws.merge_cells("A2:F2")
+        ws["A2"] = subtitle
+        ws["A2"].font = Font(italic=True, color="4F4F4F")
+        ws["A2"].alignment = Alignment(horizontal="center")
+
+
+def style_table(ws, headers, start_row=5, start_col=1):
+    header_fill = PatternFill("solid", fgColor="D9EAF7")
+    header_font = Font(bold=True, color="1F1F1F")
+    thin = Side(style="thin", color="D0D0D0")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for col in range(start_col, start_col + len(headers)):
+        cell = ws.cell(row=start_row, column=col)
+        cell.value = headers[col - start_col]
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = border
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for row in range(start_row + 1, ws.max_row + 1):
+        for col in range(start_col, start_col + len(headers)):
+            cell = ws.cell(row=row, column=col)
+            cell.border = border
+
+
+def add_table(ws, headers, rows, start_row=5, start_col=1):
+    for row_idx, row in enumerate(rows, start=start_row + 1):
+        for col_idx, value in enumerate(row, start=start_col):
+            ws.cell(row=row_idx, column=col_idx, value=value)
+    style_table(ws, headers, start_row, start_col)
+
+    # freeze panes and auto width
+    ws.freeze_panes = "A6"
+    for col_idx, header in enumerate(headers, start=start_col):
+        max_len = max(len(str(cell.value)) if cell.value is not None else 0 for cell in ws.iter_cols(min_col=col_idx, max_col=col_idx, min_row=1, max_row=ws.max_row))
+        ws.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 2, 22)
+
+
+def build_config_sheet(wb):
+    ws = wb.active
+    ws.title = "03 - CONFIGURAÇÕES"
+    set_header(ws, "KEEP ENGENHARIA", "Parâmetros gerais do sistema")
+    ws["A4"] = "Campo"
+    ws["B4"] = "Valor"
+    ws["C4"] = "Observações"
+    ws["A4"].font = Font(bold=True)
+    ws["B4"].font = Font(bold=True)
+    ws["C4"].font = Font(bold=True)
+
+    rows = [
+        ("Nome da empresa", "KEEP Engenharia", ""),
+        ("Regime tributário", "Simples Nacional", ""),
+        ("Carga tributária estimada", "10%", "Editar conforme contabilidade"),
+        ("Margem mínima desejada", "15%", ""),
+        ("Margem recomendada", "20%", ""),
+        ("Horas produtivas padrão/mês", "160", "Definir por equipe"),
+        ("Percentual de perdas de materiais", "5%", ""),
+        ("Percentual de custos indiretos", "15%", ""),
+        ("Percentual padrão de contingência", "8%", ""),
+        ("Meta de faturamento mensal", "R$ 250.000,00", ""),
+        ("Meta de lucro mensal", "R$ 35.000,00", ""),
+        ("Km médio mensal", "1.500", ""),
+        ("Observações", "Os parâmetros tributários devem ser validados com a contabilidade da empresa.", ""),
+    ]
+    for i, row in enumerate(rows, start=5):
+        for j, value in enumerate(row, start=1):
+            ws.cell(row=i, column=j, value=value)
+
+    ws["A18"] = "Aviso:"
+    ws["A18"].font = Font(bold=True, color="B22222")
+    ws["A19"] = "Os parâmetros tributários devem ser validados com a contabilidade da empresa."
+    ws["A19"].font = Font(color="B22222")
+    ws.freeze_panes = "A5"
+    ws.column_dimensions["A"].width = 28
+    ws.column_dimensions["B"].width = 24
+    ws.column_dimensions["C"].width = 36
+
+
+def build_people_sheet(wb):
+    ws = wb.create_sheet("04 - PESSOAS")
+    set_header(ws, "KEEP ENGENHARIA", "Cadastro de profissionais")
+    headers = [
+        "ID", "Nome", "Função", "Tipo", "Regime", "Custo mensal", "Encargos", "Benefícios", "Outros custos",
+        "Custo total mensal", "Horas disponíveis", "Horas improdutivas", "Horas produtivas", "Custo hora produtiva", "Observações"
+    ]
+    rows = [
+        [1, "João Silva", "Engenheiro", "Engenheiro", "CLT", 9000, 2000, 500, 300, 11800, 220, 30, 190, 62.11, ""],
+        [2, "Maria Souza", "Mestre de obras", "Mestre de obras", "CLT", 6500, 1800, 350, 200, 8850, 220, 35, 185, 47.84, ""],
+        [3, "Carlos Lima", "Pedreiro", "Pedreiro", "CLT", 4200, 1200, 250, 150, 5800, 220, 25, 195, 29.74, ""],
+    ]
+    add_table(ws, headers, rows)
+    ws["K5"] = ""  # placeholder to keep structure sensible
+
+    # formulas
+    for row in range(6, 9):
+        ws[f("J{row}")] = f"=F{row}+G{row}+H{row}+I{row}"
+        ws[f("N{row}")] = f"=J{row}/M{row}"
+
+
+def build_vehicles_sheet(wb):
+    ws = wb.create_sheet("05 - VEÍCULOS")
+    set_header(ws, "KEEP ENGENHARIA", "Custo por km")
+    headers = [
+        "ID", "Veículo", "Placa", "Tipo", "Km/L", "Preço combustível", "Combustível/km", "Manutenção/km",
+        "Pneus/km", "Seguro/km", "IPVA/km", "Depreciação/km", "Outros/km", "Custo total/km"
+    ]
+    rows = [
+        [1, "Pick-up 4x4", "ABC-1234", "Caminhonete", 8, 5.80, "=F6/E6", 0.85, 0.45, 0.30, 0.22, 0.70, 0.20, "=G6+H6+I6+J6+K6+L6+M6"],
+        [2, "Van de serviços", "DEF-5678", "Van", 9, 5.80, "=F7/E7", 0.72, 0.40, 0.25, 0.18, 0.50, 0.15, "=G7+H7+I7+J7+K7+L7+M7"],
+    ]
+    add_table(ws, headers, rows)
+
+
+def build_equipment_sheet(wb):
+    ws = wb.create_sheet("06 - EQUIPAMENTOS")
+    set_header(ws, "KEEP ENGENHARIA", "Custo por hora")
+    headers = [
+        "ID", "Equipamento", "Categoria", "Valor aquisição", "Vida útil anos", "Horas estimadas",
+        "Valor residual", "Depreciação/hora", "Manutenção/hora", "Outros custos/hora", "Custo total/hora"
+    ]
+    rows = [
+        [1, "Compactador", "Ferramenta", 13000, 5, 3000, 1000, "=(D6-F6)/E6", 1.20, 0.80, "=H6+I6+J6"],
+        [2, "Gerador", "Máquina", 22000, 7, 3500, 2500, "=(D7-F7)/E7", 1.80, 1.10, "=H7+I7+J7"],
+    ]
+    add_table(ws, headers, rows)
+
+
+def build_clients_sheet(wb):
+    ws = wb.create_sheet("07 - CLIENTES")
+    set_header(ws, "KEEP ENGENHARIA", "Cadastro de clientes")
+    headers = ["ID Cliente", "Nome/Razão Social", "CPF/CNPJ", "Telefone", "E-mail", "Cidade", "Estado", "Tipo de cliente", "Observações"]
+    rows = [
+        [1, "Residencial Alfa", "12.345.678/0001-99", "(11) 99888-1111", "contato@residencialalfa.com.br", "São Paulo", "SP", "Residencial", ""],
+        [2, "Empresa Beta Ltda", "98.765.432/0001-88", "(11) 99777-2222", "financeiro@empresabeta.com.br", "Campinas", "SP", "Comercial", ""],
+    ]
+    add_table(ws, headers, rows)
+
+
+def build_works_sheet(wb):
+    ws = wb.create_sheet("08 - OBRAS_SERVIÇOS")
+    set_header(ws, "KEEP ENGENHARIA", "Visão de obras e serviços")
+    headers = [
+        "ID Obra/Serviço", "Código interno", "Cliente", "Tipo de serviço", "Descrição", "Valor contratado", "Data contratação",
+        "Data início", "Data prevista término", "Data término", "Status", "Custo orçado", "Custo realizado",
+        "Custo comprometido", "Custo projetado", "Lucro bruto", "Margem atual", "Margem projetada", "Situação financeira", "Observações"
+    ]
+    rows = [
+        [1, "K-001", "Residencial Alfa", "Reforma", "Reforma de cozinha e área de serviço", 85000, "2025-01-15", "2025-01-20", "2025-03-15", "", "Em andamento", 62000, 41000, 15000, 61000, "=F6-N6", "=(F6-M6)/F6", "=(F6-O6)/F6", "Saudável", ""],
+        [2, "K-002", "Empresa Beta Ltda", "Obra", "Ampliação de sede comercial", 180000, "2025-02-03", "2025-02-10", "2025-06-30", "", "Em andamento", 150000, 98000, 35000, 145000, "=F7-N7", "=(F7-M7)/F7", "=(F7-O7)/F7", "Atenção", ""],
+        [3, "K-003", "Cliente X", "Consultoria", "Laudo técnico estrutural", 35000, "2025-03-01", "2025-03-05", "2025-04-10", "", "Concluído", 26000, 31000, 2000, 33000, "=F8-N8", "=(F8-M8)/F8", "=(F8-O8)/F8", "Prejuízo", ""],
+    ]
+    add_table(ws, headers, rows)
+
+    # formulas for profitability metrics
+    for row in range(6, 9):
+        ws[f("Q{row}")] = f"=F{row}-M{row}"
+        ws[f("R{row}")] = f"=(F{row}-M{row})/F{row}"
+        ws[f("S{row}")] = f"=(F{row}-O{row})/F{row}"
+
+
+def build_budget_sheet(wb):
+    ws = wb.create_sheet("09 - ORÇAMENTO")
+    set_header(ws, "KEEP ENGENHARIA", "Orçamento detalhado por obra")
+    headers = [
+        "ID Obra", "Categoria", "Item", "Descrição", "Unidade", "Quantidade", "Custo unitário", "Custo total", "Fornecedor", "Observação"
+    ]
+    rows = [
+        [1, "Mão de obra", "Mão de obra", "Equipe de reforma", "Mês", 1, 18000, "=F6*G6", "Fornecedor interno", ""],
+        [1, "Materiais", "Material de obra", "Cimento e areia", "Saco", 200, 18, "=F7*G7", "Distribuidora A", ""],
+        [2, "Terceiros", "Instalação elétrica", "Serviço elétrico", "Unidade", 1, 12000, "=F8*G8", "Empresa Eletro", ""],
+    ]
+    add_table(ws, headers, rows)
+    # total summary by category
+    ws["L5"] = "Resumo por obra"
+    ws["L5"].font = Font(bold=True)
+    ws["L6"] = "Mão de obra"
+    ws["M6"] = "=SUMIF(B:B,\"Mão de obra\",H:H)"
+    ws["L7"] = "Materiais"
+    ws["M7"] = "=SUMIF(B:B,\"Materiais\",H:H)"
+    ws["L8"] = "Terceiros"
+    ws["M8"] = "=SUMIF(B:B,\"Terceiros\",H:H)"
+    ws["L9"] = "Combustível"
+    ws["M9"] = "=SUMIF(B:B,\"Combustível\",H:H)"
+    ws["L10"] = "Equipamentos"
+    ws["M10"] = "=SUMIF(B:B,\"Equipamentos\",H:H)"
+    ws["L11"] = "Transporte"
+    ws["M11"] = "=SUMIF(B:B,\"Transporte\",H:H)"
+    ws["L12"] = "Outros"
+    ws["M12"] = "=SUMIF(B:B,\"Outros\",H:H)"
+    ws["L13"] = "TOTAL"
+    ws["M13"] = "=SUM(M6:M12)"
+
+
+def build_launches_sheet(wb):
+    ws = wb.create_sheet("10 - LANÇAMENTOS")
+    set_header(ws, "KEEP ENGENHARIA", "Base de dados de receitas e custos")
+    headers = [
+        "Data", "ID Obra/Serviço", "Cliente", "Tipo de lançamento", "Descrição", "Categoria", "Profissional/Fornecedor",
+        "Quantidade", "Unidade", "Valor unitário", "Receita", "Custo", "Status financeiro", "Data vencimento",
+        "Data pagamento/recebimento", "Forma pagamento", "Comprovante", "Observação"
+    ]
+    rows = [
+        ["2025-04-01", 1, "Residencial Alfa", "Receita", "Pagamento de etapa", "Obra", "Cliente", 1, "Etapa", 85000, 85000, 0, "Recebido", "2025-04-05", "2025-04-03", "Transferência", "REC-001", ""],
+        ["2025-04-02", 1, "Residencial Alfa", "Custo", "Mão de obra reforma", "Mão de obra", "João Silva", 1, "Mês", 9000, 0, 9000, "Pago", "2025-04-02", "2025-04-02", "Transferência", "CUSTO-001", ""],
+        ["2025-04-05", 2, "Empresa Beta Ltda", "Custo", "Compra de materiais", "Materiais", "Distribuidora A", 40, "Saco", 18, 0, 720, "Comprometido", "2025-04-10", "", "Boleto", "MAT-001", ""],
+    ]
+    add_table(ws, headers, rows)
+
+
+def build_expenses_sheet(wb):
+    ws = wb.create_sheet("11 - DESPESAS")
+    set_header(ws, "KEEP ENGENHARIA", "Despesas administrativas e indiretas")
+    headers = [
+        "Data", "Categoria", "Descrição", "Valor", "Fixa?", "Centro de custo", "Status", "Vencimento", "Pagamento", "Forma pagamento", "Observação"
+    ]
+    rows = [
+        ["2025-04-03", "Contabilidade", "Assessoria contábil", 1800, "Sim", "Administração", "Pago", "2025-04-03", "2025-04-03", "Transferência", ""],
+        ["2025-04-04", "Telefone", "Telefone fixo e móvel", 380, "Sim", "Administração", "Pago", "2025-04-04", "2025-04-04", "Débito", ""],
+        ["2025-04-10", "Software", "Sistema de gestão", 950, "Sim", "Administração", "Previsto", "2025-04-15", "", "Cartão", ""],
+    ]
+    add_table(ws, headers, rows)
+
+
+def build_pricing_sheet(wb):
+    ws = wb.create_sheet("12 - FORMAÇÃO_PREÇO")
+    set_header(ws, "KEEP ENGENHARIA", "Calculadora de preço")
+    headers = [
+        "ID Obra/Serviço", "Receita desejada", "Custos diretos", "Custos indiretos", "Custo total", "Tributos %", "Margem desejada %",
+        "Contingência %", "Preço mínimo", "Preço recomendado", "Lucro estimado", "Margem estimada"
+    ]
+    rows = [
+        [1, 85000, 60000, 15000, "=C6+D6+H6", 0.08, 0.20, 0.08, "=E6/(1-G6-H6)", "=E6/(1-F6-G6)", "=J6-E6", "=(J6-E6)/J6"],
+    ]
+    add_table(ws, headers, rows)
+    ws["A5"] = "Controle"
+    ws["B5"] = "Valor"
+    ws["A5"].font = Font(bold=True)
+    ws["B5"].font = Font(bold=True)
+
+
+def build_dre_sheet(wb):
+    ws = wb.create_sheet("13 - DRE_GERENCIAL")
+    set_header(ws, "KEEP ENGENHARIA", "DRE gerencial")
+    ws["A4"] = "Descrição"
+    ws["B4"] = "Valor"
+    ws["A4"].font = Font(bold=True)
+    ws["B4"].font = Font(bold=True)
+
+    base_rows = [
+        ("RECEITA BRUTA", 420000),
+        ("(-) CUSTOS DIRETOS", -258000),
+        ("= LUCRO BRUTO", "=B5+B6"),
+        ("MARGEM BRUTA %", "=B7/B5"),
+        ("(-) DESPESAS INDIRETAS", -74000),
+        ("(-) PRÓ-LABORE", -25000),
+        ("(-) OUTRAS DESPESAS", -12000),
+        ("(-) TRIBUTOS", -16000),
+        ("= RESULTADO LÍQUIDO", "=SUM(B5:B8)"),
+        ("MARGEM LÍQUIDA %", "=B9/B5"),
+        ("Observação:", "Esta DRE é gerencial e não substitui a contabilidade oficial."),
+    ]
+    for i, row in enumerate(base_rows, start=5):
+        for j, value in enumerate(row, start=1):
+            ws.cell(row=i, column=j, value=value)
+
+
+def build_cashflow_sheet(wb):
+    ws = wb.create_sheet("14 - FLUXO_CAIXA")
+    set_header(ws, "KEEP ENGENHARIA", "Fluxo de caixa")
+    headers = ["Data", "Descrição", "Categoria", "Obra/Serviço", "Entrada", "Saída", "Saldo", "Status", "Forma pagamento", "Observação"]
+    rows = [
+        ["2025-04-01", "Receita Etapa 1", "Receita", "Residencial Alfa", 85000, 0, 85000, "Recebido", "Transferência", ""],
+        ["2025-04-03", "Pagamento de materiais", "Materiais", "Residencial Alfa", 0, 7200, 77800, "Pago", "Boleto", ""],
+        ["2025-04-06", "Pagamento de equipe", "Mão de obra", "Residencial Alfa", 0, 9000, 68800, "Pago", "Transferência", ""],
+    ]
+    add_table(ws, headers, rows)
+    ws["L5"] = "Saldo inicial"
+    ws["M5"] = 50000
+    ws["L6"] = "Entradas"
+    ws["M6"] = "=SUM(E:E)"
+    ws["L7"] = "Saídas"
+    ws["M7"] = "=SUM(F:F)"
+    ws["L8"] = "Saldo final"
+    ws["M8"] = "=M5+M6-M7"
+
+
+def build_indicators_sheet(wb):
+    ws = wb.create_sheet("15 - INDICADORES")
+    set_header(ws, "KEEP ENGENHARIA", "Indicadores operacionais")
+    labels = [
+        "Faturamento mensal", "Faturamento acumulado", "Custos diretos", "Despesas indiretas", "Lucro bruto", "Lucro líquido",
+        "Margem bruta", "Margem líquida", "Ticket médio", "Custo médio por obra", "Número de obras", "Obras lucrativas",
+        "Obras em atenção", "Obras com risco", "Obras com prejuízo", "Custo de mão de obra", "Custo de materiais",
+        "Custo de terceiros", "Custo de combustível", "Custo de equipamentos", "Despesas administrativas"
+    ]
+    values = [420000, 1320000, 258000, 74000, 162000, 88000, 38.57, 20.95, 70000, 45000, 12, 8, 2, 1, 1, 120000, 60000, 30000, 14000, 18000, 42000]
+    for i, (label, value) in enumerate(zip(labels, values), start=5):
+        ws[f"A{i}"] = label
+        ws[f"B{i}"] = value
+    ws["A28"] = "Serviço mais rentável"
+    ws["B28"] = "Projeto"
+    ws["A29"] = "Serviço menos rentável"
+    ws["B29"] = "Obra"
+    ws["A30"] = "Obra mais lucrativa"
+    ws["B30"] = "K-001"
+    ws["A31"] = "Obra com maior desvio de orçamento"
+    ws["B31"] = "K-003"
+    ws["A32"] = "Maior categoria de custo"
+    ws["B32"] = "Mão de obra"
+
+
+def build_cadastros_sheet(wb):
+    ws = wb.create_sheet("16 - CADASTROS")
+    set_header(ws, "KEEP ENGENHARIA", "Listas auxiliares e validações")
+    headers = ["Tipo", "Lista"]
+    rows = [
+        ["Tipos de serviço", "Obra, Reforma, Projeto, Laudo, Vistoria, Consultoria, Fiscalização, Gerenciamento, Manutenção, Instalação, Estrutura metálica, Outro"],
+        ["Categorias de custos", "Mão de obra, Materiais, Terceiros, Combustível, Equipamentos, Transporte, Taxas, Outros"],
+        ["Categorias de despesas", "Contabilidade, Telefone, Internet, Software, Marketing, Escritório, Aluguel, Energia, Água, Pró-labore, Impostos, Veículos, Seguros, Bancárias, Outros"],
+        ["Status de obra", "Orçamento, Aprovado, Em andamento, Paralisado, Concluído, Cancelado"],
+        ["Status financeiro", "Previsto, Comprometido, Pago, Recebido, Cancelado"],
+        ["Formas de pagamento", "Dinheiro, Pix, Transferência, Boleto, Cartão, Cheque, TED"],
+        ["Unidades", "m², m, kg, litro, hora, unidade, mês, saco, caixa"],
+        ["Funções", "Sócio, Engenheiro, Mestre de obras, Pedreiro, Servente, Eletricista, Encanador, Pintor, Administrativo, Terceirizado, Outro"],
+        ["Tipos de profissionais", "Sócio, Engenheiro, Mestre de obras, Pedreiro, Servente, Eletricista, Encanador, Pintor, Administrativo, Terceirizado, Outro"],
+        ["Tipos de veículos", "Carro, Van, Caminhonete, Moto, Caminhão, Outros"],
+        ["Tipos de equipamentos", "Ferramenta, Máquina, Eletrônica, Segurança, Outros"],
+    ]
+    add_table(ws, headers, rows)
+
+
+def build_dashboard_sheet(wb):
+    ws = wb.create_sheet("01 - DASHBOARD")
+    ws.title = "01 - DASHBOARD"
+    set_header(ws, "KEEP ENGENHARIA", "Dashboard executivo")
+
+    cards = [
+        ("FATURAMENTO", "R$ 420.000"),
+        ("CUSTOS DIRETOS", "R$ 258.000"),
+        ("LUCRO BRUTO", "R$ 162.000"),
+        ("DESPESAS", "R$ 74.000"),
+        ("LUCRO LÍQUIDO", "R$ 88.000"),
+        ("MARGEM LÍQUIDA", "21%"),
+    ]
+    for idx, (label, value) in enumerate(cards):
+        row = 5 + (idx // 3) * 3
+        col = 2 + (idx % 3) * 3
+        ws.cell(row=row, column=col, value=label)
+        ws.cell(row=row + 1, column=col, value=value)
+        ws.cell(row=row, column=col).font = Font(bold=True, color="FFFFFF")
+        ws.cell(row=row, column=col).fill = PatternFill("solid", fgColor="1F3552")
+        ws.cell(row=row + 1, column=col).font = Font(size=14, bold=True)
+        ws.cell(row=row + 1, column=col).fill = PatternFill("solid", fgColor="EAF2F8")
+        ws.merge_cells(start_row=row, start_column=col, end_row=row, end_column=col + 1)
+        ws.merge_cells(start_row=row + 1, start_column=col, end_row=row + 1, end_column=col + 1)
+
+    # chart: Receita x Custos x Lucro
+    chart = BarChart()
+    chart.title = "Receita x Custos x Lucro"
+    data = ["Receita", "Custo", "Lucro"]
+    chart_data = [
+        ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun"],
+        [300000, 340000, 390000, 420000, 460000, 500000],
+        [180000, 210000, 240000, 258000, 278000, 295000],
+        [120000, 130000, 150000, 162000, 182000, 205000],
+    ]
+    # simplified placeholder chart using existing values will be set below
+    ws["A18"] = "Dados da série"
+    ws["A19"] = "Mês"
+    ws["B19"] = "Receita"
+    ws["C19"] = "Custos"
+    ws["D19"] = "Lucro"
+    meses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun"]
+    rows_data = [
+        ["Jan", 300000, 180000, 120000],
+        ["Fev", 340000, 210000, 130000],
+        ["Mar", 390000, 240000, 150000],
+        ["Abr", 420000, 258000, 162000],
+        ["Mai", 460000, 278000, 182000],
+        ["Jun", 500000, 295000, 205000],
+    ]
+    for i, row in enumerate(rows_data, start=20):
+        for j, value in enumerate(row, start=1):
+            ws.cell(row=i, column=j, value=value)
+    chart = BarChart()
+    chart.title = "Receita x Custos x Lucro"
+    chart.y_axis.title = "R$"
+    chart.x_axis.title = "Mês"
+    data = ws["B20:D25"]
+    chart.add_data(data, titles_from_data=True)
+    chart.set_categories(ws["A20:A25"])
+    ws.add_chart(chart, "H20")
+
+    pie = PieChart()
+    pie.title = "Participação por categoria"
+    pie_data = ["Mão de obra", "Materiais", "Terceiros", "Combustível", "Equipamentos", "Despesas administrativas", "Impostos", "Outros"]
+    pie_values = [120000, 60000, 30000, 14000, 18000, 42000, 15000, 12000]
+    ws["H5"] = "Participação por categoria"
+    for i, (label, value) in enumerate(zip(pie_data, pie_values), start=2):
+        ws[f"H{i}"] = label
+        ws[f"I{i}"] = value
+    pie_data_ref = ws["I2:I9"]
+    pie_cat_ref = ws["H2:H9"]
+    pie.add_data(pie_data_ref, titles_from_data=False)
+    pie.set_categories(pie_cat_ref)
+    pie.height = 7
+    pie.width = 9
+    ws.add_chart(pie, "N20")
+
+    ws["A35"] = "RAIO-X DA EMPRESA — ONDE O DINHEIRO ESTÁ INDO?"
+    ws["A35"].font = Font(bold=True)
+    ws["A36"] = "Mão de obra"
+    ws["B36"] = 120000
+    ws["A37"] = "Materiais"
+    ws["B37"] = 60000
+    ws["A38"] = "Terceiros"
+    ws["B38"] = 30000
+    ws["A39"] = "Combustível"
+    ws["B39"] = 14000
+    ws["A40"] = "Equipamentos"
+    ws["B40"] = 18000
+    ws["A41"] = "Despesas administrativas"
+    ws["B41"] = 42000
+    ws["A42"] = "Impostos"
+    ws["B42"] = 15000
+    ws["A43"] = "Outros"
+    ws["B43"] = 12000
+
+
+def build_instruction_sheet(wb):
+    ws = wb.create_sheet("02 - INSTRUÇÕES")
+    set_header(ws, "KEEP ENGENHARIA", "Como usar o sistema")
+    instructions = [
+        "1. O que cadastrar primeiro: empresa, configurações, clientes, pessoas, veículos, equipamentos e obras.",
+        "2. Como cadastrar pessoas: informe nome, função, custo mensal, encargos e horas produtivas reais.",
+        "3. Como calcular custo/hora: custo total mensal dividido pelas horas produtivas reais.",
+        "4. Como cadastrar veículos: informe preço do combustível, manutenção, pneus, seguro, IPVA e depreciação por km.",
+        "5. Como calcular custo/km: soma dos itens por km.",
+        "6. Como cadastrar equipamentos: informe aquisição, vida útil, horas estimadas e custos de manutenção.",
+        "7. Como criar uma obra: cadastre o cliente, descreva o serviço, o valor contratado e o status.",
+        "8. Como fazer orçamento: use a aba ORÇAMENTO e defina custos por categoria.",
+        "9. Como lançar custos: registre os custos em LANÇAMENTOS com categoria e status financeiro.",
+        "10. Como lançar receitas: registre receitas em LANÇAMENTOS com tipo Receita.",
+        "11. Como registrar despesas: utilize a aba DESPESAS para custos indiretos, impostos e fixos.",
+        "12. Como analisar margem: compare o valor contratado com os custos realizados e projetados.",
+        "13. Como usar o Dashboard: acompanhe faturamento, custos, margem e alertas.",
+        "14. Como identificar prejuízo: compare custo e receita por obra e pela DRE.",
+        "15. Como identificar onde o dinheiro está indo: analise as categorias no dashboard e nos indicadores.",
+        "Exemplo fictício: uma obra de reforma recebeu R$ 85.000, teve custo real de R$ 60.000 e gerou margem de 29%.",
+        "Exemplo fictício: uma obra de consultoria teve custo previsto de R$ 26.000 e faturamento de R$ 35.000, gerando margem saudável.",
+        "Exemplo fictício: uma obra com custo projetado acima do contrato deve ser sinalizada como risco ou prejuízo no dashboard.",
+    ]
+    for idx, text in enumerate(instructions, start=5):
+        ws[f"A{idx}"] = text
+        ws[f"A{idx}"].alignment = Alignment(wrap_text=True)
+    ws.column_dimensions["A"].width = 140
+    ws.freeze_panes = "A5"
+
+
+def generate_workbook(file_name="KEEP_Sistema_Executivo_Custos_v1.xlsx"):
+    wb = Workbook()
+    build_dashboard_sheet(wb)
+    build_instruction_sheet(wb)
+    build_config_sheet(wb)
+    build_people_sheet(wb)
+    build_vehicles_sheet(wb)
+    build_equipment_sheet(wb)
+    build_clients_sheet(wb)
+    build_works_sheet(wb)
+    build_budget_sheet(wb)
+    build_launches_sheet(wb)
+    build_expenses_sheet(wb)
+    build_pricing_sheet(wb)
+    build_dre_sheet(wb)
+    build_cashflow_sheet(wb)
+    build_indicators_sheet(wb)
+    build_cadastros_sheet(wb)
+
+    # Remove default sheet if created
+    default_sheet = wb["Sheet"]
+    if default_sheet is not None:
+        wb.remove(default_sheet)
+
+    # Save to memory
+    stream = BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+    return stream.getvalue()
+
+
+if __name__ == "__main__":
+    data = generate_workbook()
+    with open("KEEP_Sistema_Executivo_Custos_v1.xlsx", "wb") as f:
+        f.write(data)
+        print("Arquivo Excel criado: KEEP_Sistema_Executivo_Custos_v1.xlsx")
